@@ -57,20 +57,14 @@ ifnull <- function(x , alt ) {
 ```
 
 
+## Data 
+The data base used for these analysis can be download form OSF (https://osf.io/r3nf2/) after signing a data sharing agreement.
+
+
 ```{r, include=F, echo=F}
 ies_research_con <- dbConnect(RSQLite::SQLite(),
-                              "/Users/kirkvanacore/Documents/WPI Analyses/MAPLE_IES_DB_Creation/ies_research schema/maple_ies_research.db")
+                              "/Users/kirkvanacore/Documents/WPI_Analyses/MAPLE_IES_DB_Creation/ies_research schema/maple_ies_research.db")
 
-test <- dbGetQuery(ies_research_con, 
-"select asp.*,
-    meta.curricula,
-    meta.problem_type
-
-from assist_student_problem as asp
-left join assist_problems_meta as meta on asp.problem_id = meta.problem_id
-
-where meta.math_problem = 1;"
-                   )
 
 dat <- dbGetQuery(ies_research_con, 
 " select sr.StuID,
@@ -931,7 +925,7 @@ dat %>%
 
 ```
 
-## RQ3 (w/ SD)
+## RQ3 
 ### aggrigated dtata
 ```{r}
 
