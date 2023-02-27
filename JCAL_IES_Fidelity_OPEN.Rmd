@@ -11,6 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```
 
+# Load packages
 ```{r, include=FALSE}
 ####Installing & Loading Packages###
 #create list of packages
@@ -57,15 +58,26 @@ ifnull <- function(x , alt ) {
 ```
 
 
-## Data 
-The data base used for these analysis can be download form OSF (https://osf.io/r3nf2/) after signing a data sharing agreement.
+## Accessing Data 
+The database used for these analysis can be download form OSF (https://osf.io/r3nf2/) after signing a data sharing agreement (DSA). Follow these steps:
 
+1. Submit DSA by following instructions here: https://osf.io/skghn
+
+2. Once the DSA has been proceeded download SQLite data base: https://osf.io/bkn7p
+
+3. Connect R to data base:
 
 ```{r, include=F, echo=F}
 ies_research_con <- dbConnect(RSQLite::SQLite(),
-                              "/Users/kirkvanacore/Documents/WPI_Analyses/MAPLE_IES_DB_Creation/ies_research schema/maple_ies_research.db")
+                              "/Users/kirkvanacore/Documents/WPI_Analyses/MAPLE_IES_DB_Creation/ies_research schema/maple_ies_research.db"
+                              #"PATH TO DATABASE/maple_ies_research.db"
+                              )
+
+```
 
 
+4. Query Database:
+```{r}
 dat <- dbGetQuery(ies_research_con, 
 " select sr.StuID,
     sr.SchIDPre,
@@ -125,10 +137,7 @@ where sr.COND4092 is not null
 
 # drop dup columns (from my lazy query)
 unique_names <- unique(colnames(dat))
-
-# Keep Only Unique Column Names
 dat<-dat[unique_names]
-
 rm(unique_names)
 
 
