@@ -1,0 +1,1169 @@
+---
+title: "Class Level Fidelity"
+author: "Kirk Vanacore"
+date: "9/15/2021"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+```{r, include=FALSE}
+####Installing & Loading Packages###
+#create list of packages
+packages = c(
+  "tidyverse",
+  "plyr",
+  "ggplot2",
+  "lme4",
+  "dplyr",
+  "psych",
+  "ggExtra",
+  "xts",
+  "lubridate",
+  "readxl",
+  "data.table",
+  "RSQLite",
+  "DBI",
+  "gridExtra",
+  "patchwork",
+  'mclust',
+  'plotly',
+  'stringr',
+  'corrplot',
+  'scatterplot3d'
+) 
+#load install
+package.check <- lapply(
+  packages,
+  FUN = function(x) {
+    if (!require(x, character.only = TRUE)) {
+      install.packages(x, dependencies = TRUE)
+      library(x, character.only = TRUE)
+    }
+  }
+) 
+rm(package.check, packages)
+
+ifnull <- function(x , alt ) {
+  ifelse(is.na(x), alt, x)
+  
+}
+
+
+```
+
+
+```{r, include=F, echo=F}
+ies_research_con <- dbConnect(RSQLite::SQLite(),
+                              "/Users/kirkvanacore/Documents/WPI Analyses/MAPLE_IES_DB_Creation/ies_research schema/maple_ies_research.db")
+
+test <- dbGetQuery(ies_research_con, 
+"select asp.*,
+    meta.curricula,
+    meta.problem_type
+
+from assist_student_problem as asp
+left join assist_problems_meta as meta on asp.problem_id = meta.problem_id
+
+where meta.math_problem = 1;"
+                   )
+
+dat <- dbGetQuery(ies_research_con, 
+" select sr.StuID,
+    sr.SchIDPre,
+    sr.SchIDEnd,
+    sr.TeaIDPre,
+    sr.TeaIDEnd,
+    sr.TeaIDEnd_within_school,
+    sr.ClaIDPre,
+    sr.ClaIDEnd,
+    sr.rdm_condition,
+    sr.condition_assignment,
+    sr.inperson,
+    sr.virtual,
+    sr.stay_INPERSON,
+    sr.stay_VIRTUAL,
+    sr.INP_VIR,
+    sr.VIR_INP,
+    sd.FEMALE,
+    sd.MALE,
+    sd.race_ethnicity,
+    sd.IEP,
+    sd.EIP,
+    sd.ESOL,
+    sd.GIFTED,
+    sf.*,
+    fs.num_attempted as fh2t_num_attempted,
+    fs.per_total_problem_complete as fh2t_per_total_problem_complete,
+    fs.total_time as fh2t_total_time,
+    sa.num_graded_problems_attempted as assist_num_graded_problems_attempted,  
+    sa.per_graded_problems_attempted as assist_per_graded_problems_attempted,  
+    sa.total_time as assist_total_time,
+    ds.Total_Problem_Device as dragon_total_problems_attempted  ,
+    sr.DROPSCH1,
+    sr.DROPSCH2,
+    sr.RESOURCE
+    
+
+
+    
+    
+
+from student_roster sr
+    left join student_demo sd on sd.StuID = sr.StuID
+    left join student_fidelity sf on sf.StuID = sr.StuID
+    left join fh2t_student fs on fs.StuID = sr.StuID
+    left join assist_student sa on sa.StuID = sr.StuID
+    left join dragon_student ds on ds.StuID = sr.StuID
+
+
+where sr.COND4092 is not null
+
+;"
+    
+ )
+
+
+
+# drop dup columns (from my lazy query)
+unique_names <- unique(colnames(dat))
+
+# Keep Only Unique Column Names
+dat<-dat[unique_names]
+
+rm(unique_names)
+
+
+```
+
+
+```{r}
+
+### condition
+table(dat$condition_assignment)
+dat$condition_assignment = factor(dat$condition_assignment,
+  levels = c("FH2T", "DragonBox", "Instant", "Delay")
+)
+
+
+### assignments stated
+dat$total_assignmnet_started <- 
+           ifnull(dat$started_assignment_2,0) +
+           ifnull(dat$started_assignment_3,0) +
+           ifnull(dat$started_assignment_4,0) +
+           ifnull(dat$started_assignment_5,0) +
+           ifnull(dat$started_assignment_7,0) +
+           ifnull(dat$started_assignment_8,0) +
+           ifnull(dat$started_assignment_9,0) +
+           ifnull(dat$started_assignment_10,0) +
+           ifnull(dat$started_assignment_11,0) 
+
+table(is.na(dat$total_assignmnet_started))
+
+table(dat$total_assignmnet_started, dat$fidelity_complete_sum)
+table(dat$fidelity_complete_sum)
+table(dat$total_assignmnet_started)
+
+table(dat$total_assignmnet_started == 9)
+table(dat$total_assignmnet_started == 9)/length(dat$total_assignmnet_started)
+dat$percent_assignmnet_started <- dat$total_assignmnet_started/9
+
+
+psych::describe(dat$total_assignmnet_started)
+psych::describe(dat$percent_assignmnet_started)
+
+
+### assignments completed
+dat$total_assignmnet_complete <- 
+           ifnull(dat$complete_assignment_2,0) +
+           ifnull(dat$complete_assignment_3,0) +
+           ifnull(dat$complete_assignment_4,0) +
+           ifnull(dat$complete_assignment_5,0) +
+           ifnull(dat$complete_assignment_7,0) +
+           ifnull(dat$complete_assignment_8,0) +
+           ifnull(dat$complete_assignment_9,0) +
+           ifnull(dat$complete_assignment_10,0) +
+           ifnull(dat$complete_assignment_11,0) 
+
+table(is.na(dat$total_assignmnet_complete))
+
+table(is.na(dat$total_assignmnet_complete))
+
+table(dat$total_assignmnet_complete == 9)
+table(dat$total_assignmnet_complete == 9)/length(dat$total_assignmnet_complete)
+dat$percent_assignmnet_complete <- dat$total_assignmnet_complete/9
+
+
+psych::describe(dat$total_assignmnet_complete)
+psych::describe(dat$percent_assignmnet_complete)
+
+
+### create In_Vr_Moved 
+dat$inperson_virtual = ifelse(
+  dat$stay_VIRTUAL == 1, "VIRTUAL", 
+  ifelse(
+    dat$stay_INPERSON == 1, "INPERSON",
+  "MIXED"
+  )
+)
+table(dat$inperson_virtual)
+
+
+
+### time
+
+describe(dat$assist_total_time/(60000))
+describe(dat$fh2t_total_time/(60000))
+
+table(is.na(dat$assist_total_time), is.na(dat$fh2t_total_time), dat$condition_assignment)
+
+
+dat$in_program_time_mins <-
+  ifelse(
+    dat$total_assignmnet_complete == 0,
+    0,
+    ifelse(
+      is.na(dat$assist_total_time) == T,
+      dat$fh2t_total_time,
+      dat$assist_total_time
+      
+    )
+  ) / 60000
+
+table(is.na(dat$in_program_time_mins))
+table(is.na(dat$in_program_time_mins), dat$total_assignmnet_started)
+table(is.na(dat$in_program_time_mins), dat$total_assignmnet_complete)
+
+describe(dat$in_program_time_mins)
+
+
+# problems
+describe(dat$assist_num_graded_problems_attempted)
+describe(dat$fh2t_num_attempted)
+
+describe(dat$assist_per_graded_problems_attempted)
+  describe(dat$fh2t_per_total_problem_complete)
+table(dat$assist_per_graded_problems_attempted  > 1)
+hist(dat$assist_per_graded_problems_attempted)
+hist(dat$fh2t_per_total_problem_complete)
+
+
+
+dat$problems_attempted <-
+  ifelse(dat$total_assignmnet_complete == 0, 0, 
+  ifelse(
+    is.na(dat$fh2t_num_attempted) == F,
+    dat$fh2t_num_attempted,
+    ifelse(
+      is.na(dat$dragon_total_problems_attempted) == F,
+      dat$dragon_total_problems_attempted,
+      ifelse(is.na(dat$assist_num_graded_problems_attempted) == F,
+             dat$assist_num_graded_problems_attempted,
+             ifelse(dat$total_assignmnet_started == 0, 0, NA)))))
+
+table(is.na(dat$problems_attempted), dat$total_assignmnet_complete, dat$rdm_condition)
+
+dat_CHECK <- dat %>%
+  dplyr::select(StuID, rdm_condition, total_assignmnet_started, total_assignmnet_complete, problems_attempted) %>% filter(is.na(problems_attempted))
+
+table(dat_CHECK$rdm_condition, dat_CHECK$total_assignmnet_complete)
+
+table(dat_CHECK$rdm_condition)
+rm(dat_CHECK)
+
+### missing log-file data
+table(is.na(dat$in_program_time_mins), is.na(dat$problems_attempted))
+
+
+
+#percent of available problems problems attempt
+
+
+dat$per_problems_attempted <-
+  ifelse((dat$problems_attempted) == 0,
+         0,
+         ifelse(
+           is.na(dat$assist_per_graded_problems_attempted) == T,
+           dat$fh2t_per_total_problem_complete,
+           dat$assist_per_graded_problems_attempted *
+             100
+           
+         ))
+
+
+
+
+table(is.na(dat$per_problems_attempted ))
+table(is.na(dat$per_problems_attempted ), (dat$problems_attempted) > 0)
+
+describe(dat$problems_attempted)
+describeBy(dat$problems_attempted, dat$condition_assignment)
+
+describe(dat$per_problems_attempted)
+describeBy(dat$per_problems_attempted, dat$condition_assignment)
+
+
+dat$avg_problems_completed_per_assign<-ifelse(dat$total_assignmnet_started == 0, 0, dat$problems_attempted/dat$total_assignmnet_started)
+describeBy(dat$avg_problems_completed_per_assign, dat$condition_assignment)
+
+```
+
+# Sample
+```{r}
+# orginal rangmized sample
+# number of students 
+length(unique(dat$StuID))
+# number of reachers 
+length(unique(dat$TeaIDPre))
+# number of schools
+length(unique(dat$SchIDPre))
+# students in resource room
+table(dat$RESOURCE)
+
+table(is.na(dat$TeaIDEnd))
+table(is.na(dat$SchIDEnd))
+table(is.na(dat$TeaIDEnd), is.na(dat$SchIDEnd))
+
+table(is.na(dat$TeaIDPre == dat$TeaIDEnd))
+table(is.na(dat$SchIDPre == dat$SchIDEnd))
+
+### Clean 
+dat <- dat %>%
+  filter(
+    DROPSCH1 == 0,
+    RESOURCE == 0,
+    is.na(dat$SchIDEnd) == F,
+    is.na(dat$TeaIDEnd) == F,
+    condition_assignment != "DragonBox",
+    is.na(dat$in_program_time_mins) == F,
+    is.na(dat$problems_attempted) == F
+  ) %>%
+  mutate(
+    # create teacher variable
+    Teacher = ifelse(is.na(TeaIDEnd) == T, TeaIDPre, TeaIDEnd)
+  ) %>%
+  group_by(Teacher) %>%
+  mutate(
+    n_stu = n()
+  ) %>%
+  filter(
+    # drop all teachers with only one student (we determined that these were students placed into resource rooms)
+    n_stu > 1
+  ) %>%
+  select(
+    -n_stu
+  ) %>%
+  ungroup()
+
+# orginal rangmized sample
+# number of students 
+length(unique(dat$StuID))
+# number of Teachers 
+length(unique(dat$TeaIDEnd))
+table(is.na(dat$TeaIDPre))
+table(table(dat$Teacher)== 1)
+
+# number of schools
+length(unique(dat$SchIDPre))
+table(is.na(dat$TeaIDEnd))
+
+# students in resource room
+(table(dat$RESOURCE))
+
+
+table(dat$TeaIDEnd)
+table(dat$TeaIDPre  )
+
+
+# moment
+table(dat$SchIDPre == dat$SchIDEnd)
+table(dat$TeaIDEnd == dat$TeaIDPre)
+table(dat$SchIDPre == dat$SchIDEnd & dat$TeaIDEnd == dat$TeaIDPre)
+table(dat$SchIDPre == dat$SchIDEnd & dat$TeaIDEnd == dat$TeaIDPre)/length(dat$TeaIDPre)
+
+```
+# demographics
+```{r}
+# race ethnicity 
+  # 1 = Hispanic/Latino 
+  # 2 = American Indian/Alaska Native 
+  # 3 = Asian 
+  # 4 = Black/African American 
+  # 5 = Native Hawaiian or Other Pacific islander
+  # 6 = White 
+  # 7 = Two or more races
+dat$race_ethnicity <- dplyr::recode(dat$race_ethnicity, 
+  `1` = 'Hispanic/Latino',
+  `2` = 'American Indian/Alaska Native',
+  `3` = 'Asian',
+  `4` = 'Black/African American',
+  `5` = 'Native Hawaiian or Other Pacific Islander',
+  `6` = 'White',
+  `7` = 'Two or more races'
+                          )
+race<- 
+  cbind(as.data.frame(table(dat$race_ethnicity)) %>% 
+          rename(
+             "Race/Ethnicity" = Var1,
+             "n" = "Freq"
+          ),
+  as.data.frame(round(table(dat$race_ethnicity)/length(dat$race_ethnicity)*100, 2))
+                %>% 
+          rename(
+             "%" = "Freq"
+          )
+  ) %>% select(-Var1)
+
+table(is.na(dat$race_ethnicity))/length(dat$race_ethnicity)
+knitr::kable(race)
+```
+
+```{r}
+
+
+# Gender
+gender <- cbind(
+    as.data.frame(table((dat$MALE)))%>% 
+          rename(
+             "Gender" = Var1,
+             "n" = "Freq"
+          ),
+    as.data.frame(round( table((dat$MALE))/length(dat$MALE)*100, 2)) %>% 
+          rename(
+             "%" = "Freq"
+          )
+  ) %>% select(-Var1)
+gender$Gender <-  dplyr::recode(gender$Gender,
+    `0` = "Male",
+    `1` = "Female"
+  )
+knitr::kable(gender)
+
+```
+
+```{r}
+
+
+# IEP
+table((dat$IEP))/length(dat$IEP)
+iep <- cbind(
+    as.data.frame(table((dat$IEP)))%>% 
+          rename(
+             " " = Var1,
+             "n" = "Freq"
+          ),
+    as.data.frame(round( table((dat$IEP))/length(dat$IEP)*100, 2)) %>% 
+          rename(
+             "%" = "Freq"
+          )
+  ) %>% select(-Var1) %>%
+  filter( ` ` == 1)
+iep$` ` <-  dplyr::recode(iep$` `,
+    `1` = "IEP"
+  )
+
+
+
+# Gifted
+Gifted <- cbind(
+    as.data.frame(table((dat$GIFTED)))%>% 
+          rename(
+             " " = Var1,
+             "n" = "Freq"
+          ),
+    as.data.frame(round( table((dat$GIFTED))/length(dat$GIFTED)*100, 2)) %>% 
+          rename(
+             "%" = "Freq"
+          )
+  ) %>% select(-Var1) %>%
+  filter( ` ` == 1)
+Gifted$` ` <-  dplyr::recode(Gifted$` `,
+    `1` = "Gifted"
+  )
+
+
+spec_stat <- rbind( iep, Gifted)
+knitr::kable(spec_stat)
+
+```
+
+
+# Results
+## RQ1 Fedility Metic Exploration: Student  Level Metrics
+```{r}
+# RQ 1 
+
+
+### assignments started
+desc_assignmnet_started<-as.data.frame(psych::describe((dat$total_assignmnet_started/9)*100))
+
+describeBy((dat$total_assignmnet_started/9)*100, group = dat$inperson_virtual)
+summary(
+aov(
+  dat$total_assignmnet_started ~dat$inperson_virtual
+))
+TukeyHSD(aov(
+  dat$total_assignmnet_started ~dat$inperson_virtual
+))
+
+
+
+desc_assignmnet_completed<-as.data.frame(psych::describe((dat$total_assignmnet_complete/9)*100))
+
+# assignments completed
+describeBy((dat$total_assignmnet_complete/9)*100, group = dat$inperson_virtual)
+
+
+
+kableExtra::kable(
+  rbind(desc_assignmnet_started, desc_assignmnet_completed),
+  digits = 2
+)
+
+
+
+
+# overall 
+mean(dat$percent_assignmnet_complete)
+sd(dat$percent_assignmnet_complete)
+
+p<- as.numeric(table(dat$percent_assignmnet_complete == 1)/length(dat$percent_assignmnet_complete))
+p
+sqrt(p[2]*(1-p[2]))
+
+## in-person 
+mean(dat[dat$stay_INPERSON == 1,]$percent_assignmnet_complete)
+sd(dat[dat$stay_INPERSON == 1,]$percent_assignmnet_complete)
+p<-as.numeric(table(dat[dat$stay_INPERSON == 1,]$percent_assignmnet_complete == 1) / length(dat[dat$stay_INPERSON == 1,]$percent_assignmnet_complete))
+p[2]
+sqrt(p[2]*(1-p[2]))
+
+## remote
+mean(dat[dat$stay_VIRTUAL == 1,]$percent_assignmnet_complete)
+sd(dat[dat$stay_VIRTUAL == 1,]$percent_assignmnet_complete)
+p<-as.numeric(table(dat[dat$stay_VIRTUAL == 1,]$percent_assignmnet_complete == 1)/length(dat[dat$stay_VIRTUAL == 1,]$percent_assignmnet_complete))
+p[2]
+sqrt(p[2]*(1-p[2]))
+
+## mixed
+mean(dat[dat$inperson_virtual == "MIXED",]$percent_assignmnet_complete)
+sd(dat[dat$inperson_virtual == "MIXED",]$percent_assignmnet_complete)
+p<-as.numeric(table(dat[dat$inperson_virtual == "MIXED",]$percent_assignmnet_complete == 1)/length(dat[dat$inperson_virtual == "MIXED",]$percent_assignmnet_complete))
+
+
+```
+
+### Table 2
+```{r}
+table2<-cbind(
+t(dat %>%
+  summarise(
+    condition_assignment = "ALL",
+    started_mean = paste0(round(mean((percent_assignmnet_started)*100), 2), " (",round(sd((percent_assignmnet_started)*100), 2),")"),
+    complete_mean = paste0(round(mean((percent_assignmnet_complete)*100), 2), " (",round(sd((percent_assignmnet_complete)*100), 2),")"),
+    time_mean = paste0(round(mean(in_program_time_mins, na.rm = T), 2), " (",round(sd(in_program_time_mins, na.rm = T), 2),")"),
+    problems_mean = paste0(round(mean(problems_attempted, na.rm = T), 2), " (",round(sd(problems_attempted, na.rm = T), 2),")"),
+      avg_problems_per_assign = paste0(round(mean(avg_problems_completed_per_assign, na.rm = T), 2), " (",round(sd(avg_problems_completed_per_assign, na.rm = T), 2),")"),
+    pre_problems_mean = paste0(round(mean(per_problems_attempted, na.rm = T), 2), " (",round(sd(per_problems_attempted, na.rm = T),2),")")
+  )  )
+,
+t(
+dat %>%
+  dplyr::ungroup() %>%
+  dplyr::group_by(condition_assignment) %>%
+  dplyr::summarise(
+    started_mean = paste0(round(mean((percent_assignmnet_started)*100), 2), " (",round(sd((percent_assignmnet_started)*100), 2),")"),
+    complete_mean = paste0(round(mean((percent_assignmnet_complete)*100), 2), " (",round(sd((percent_assignmnet_complete)*100), 2),")"),
+    time_mean = paste0(round(mean(in_program_time_mins, na.rm = T), 2), " (",round(sd(in_program_time_mins, na.rm = T), 2),")"),
+    problems_mean = paste0(round(mean(problems_attempted, na.rm = T), 2), " (",round(sd(problems_attempted, na.rm = T), 2),")"),
+    avg_problems_per_assign = paste0(round(mean(avg_problems_completed_per_assign, na.rm = T), 2), " (",round(sd(avg_problems_completed_per_assign, na.rm = T), 2),")"),
+    pre_problems_mean = paste0(round(mean(per_problems_attempted, na.rm = T), 2), " (",round(sd(per_problems_attempted, na.rm = T),2),")")
+  ))
+
+)
+kableExtra::kable(table2)
+```
+
+```{r}
+#### Equivalence #####
+
+# assignments started
+summary(
+aov(
+  dat$percent_assignmnet_started ~dat$condition_assignment
+))
+
+
+
+TukeyHSD(aov(
+  dat$percent_assignmnet_started ~dat$condition_assignment
+))
+
+
+# assignments completed
+summary(
+aov(
+  dat$percent_assignmnet_complete~dat$condition_assignment
+))
+TukeyHSD(aov(
+  dat$percent_assignmnet_complete ~dat$condition_assignment
+))
+
+
+# time
+summary(
+aov(
+  dat$in_program_time_mins~dat$condition_assignment
+))
+TukeyHSD(aov(
+  dat$in_program_time_mins ~dat$condition_assignment
+))
+
+# problems
+summary(
+aov(
+  dat$problems_attempted~dat$in_program_time_mins
+))
+TukeyHSD(aov(
+  dat$problems_attempted ~dat$condition_assignment
+))
+
+
+# avg_problems_completed_per_assign
+summary(
+aov(
+  dat$avg_problems_completed_per_assign~dat$in_program_time_mins
+))
+TukeyHSD(aov(
+  dat$avg_problems_completed_per_assign ~ 
+    dat$condition_assignment
+))
+
+
+```
+### correlations of fideility mextrics
+```{r}
+cor.test(dat$total_assignmnet_complete, dat$total_assignmnet_started)
+# corrplot::corrplot(
+#     cor(dat %>%
+#           select(
+#             total_assignmnet_started,
+#             total_assignmnet_complete,
+#             in_program_time_mins,
+#             problems_attempted,
+#             avg_problems_completed_per_assign,
+#             per_problems_attempted
+#             
+#           ),  use= "pairwise.complete.obs"),
+#     
+# 
+# )
+cor(as.data.frame.matrix(
+  dat %>%
+    select(
+      percent_assignmnet_started,
+      percent_assignmnet_complete,
+      in_program_time_mins,
+      problems_attempted,
+      avg_problems_completed_per_assign,
+      per_problems_attempted
+    )
+  
+))
+
+
+
+round(
+cor.mtest(as.data.frame.matrix( dat %>%
+          select(
+            total_assignmnet_started,
+            total_assignmnet_complete,
+            in_program_time_mins,
+            problems_attempted,
+            avg_problems_completed_per_assign,
+            per_problems_attempted)
+            
+          ))$p, 4)
+```
+
+```{r}
+
+## standardize metrics
+
+dat<-dat %>%
+  ungroup() %>%
+  dplyr::mutate(
+    problems_attempted_Z = scale(problems_attempted)
+  ) %>%
+  dplyr::group_by(condition_assignment) %>%
+  dplyr::mutate(
+    problems_attempted_mean = mean(problems_attempted, na.rm = T),
+    problems_attempted_sd = sd(problems_attempted, na.rm = T),
+    avg_problems_completed_per_assign_mean = mean(avg_problems_completed_per_assign, na.rm = T),
+    avg_problems_completed_per_assign_sd = sd(avg_problems_completed_per_assign, na.rm = T),
+    in_program_time_mins_mean = mean(in_program_time_mins, na.rm = T),
+    in_program_time_mins_sd = sd(in_program_time_mins, na.rm = T),
+  ) %>%
+  ungroup() %>%
+  dplyr::mutate(
+    problems_attempted_Z_condition = (problems_attempted - problems_attempted_mean)/problems_attempted_sd,
+    avg_problems_completed_per_assign_Z_condition = (avg_problems_completed_per_assign - avg_problems_completed_per_assign_mean)/avg_problems_completed_per_assign_sd,
+    in_program_time_mins_z = (in_program_time_mins - in_program_time_mins_mean)/in_program_time_mins_sd
+  ) 
+summary(dat$problems_attempted_Z_condition)
+table(dat$problems_attempted_Z_condition == dat$problems_attempted_Z)
+
+fig1a <- dat %>%
+  dplyr::group_by(condition_assignment) %>%
+  dplyr::mutate(problem_mean = mean(problems_attempted, na.rm = T)) %>%
+  ggplot(aes(x = problems_attempted, fill = condition_assignment)) +
+  geom_density(alpha = .7)  +
+  theme_classic() +
+  geom_vline(aes(xintercept = problem_mean) ) +
+  labs(title = "Raw Number of Problems Attempted",
+       fill = "Condition") +
+  scale_x_continuous(name = "Problems Attempted (Raw)")
+    
+
+fig1b <- dat %>%
+  ggplot(aes(x = problems_attempted_Z_condition, fill = condition_assignment,
+             color = condition_assignment)) +
+  geom_density(alpha = .7) +
+  theme_classic() +
+  labs(title = "Standardized Number of Problems Attempted",
+    fill = "Condition") +
+  scale_x_continuous(name = "Problems Attempted (Z-score)")
+  
+
+fig1a + fig1b + plot_layout(guides = "collect")
+
+
+
+
+dat %>%
+  ggplot(aes(x = (avg_problems_completed_per_assign), fill = condition_assignment,
+             color = condition_assignment)) +
+  geom_density(alpha = .7) +
+  theme_classic() +
+  labs(title = "Standardized Number of Problems Attempted",
+    fill = "Condition") +
+  scale_x_continuous(name = "Problems Attempted (Z-score)")
+  
+
+fig1a + fig1b + plot_layout(guides = "collect")
+
+
+```
+```{r}
+ggplot(dat, aes(x= percent_assignmnet_started, y = problems_attempted_Z_condition)) +
+  geom_density2d() +
+  geom_jitter(alpha = .2) +
+  theme_classic()
+
+
+ggplot(dat, aes(x= percent_assignmnet_started, y = avg_problems_completed_per_assign)) +
+  geom_density2d() +
+  geom_jitter(alpha = .2) +
+  theme_classic()
+
+
+ggplot(dat, aes(x= problems_attempted_Z_condition, y = avg_problems_completed_per_assign, color =percent_assignmnet_started)) +
+  geom_density2d() +
+  geom_point(alpha = .2) +
+  theme_classic()
+```
+cor
+```{r}
+corr.test(dat$problems_attempted_Z_condition, dat$per_problems_attempted)
+
+dat %>% 
+  dplyr::group_by(condition_assignment) %>%
+  filter(!is.na(in_program_time_mins)) %>%
+  dplyr::summarise(
+    mean = mean(percent_assignmnet_complete),
+    cor = (cor(percent_assignmnet_complete, in_program_time_mins)))
+  
+cor<-corr.test(dat$percent_assignmnet_complete, dat$in_program_time_mins)$r
+cor
+
+
+corr.test(dat$problems_attempted_Z_condition, dat$avg_problems_completed_per_assign_Z_condition)
+
+corr.test(dat$problems_attempted_Z_condition, dat$avg_problems_completed_per_assign_Z_condition)
+
+```
+#### table 3 metric cor 
+```{r}
+
+
+library(Hmisc)
+rcorr(as.matrix(dat %>%
+  select(
+    "Assignments Started" =percent_assignmnet_started,
+    "Total Problems*" =problems_attempted_Z_condition,
+    "Problems per Assignment*" =avg_problems_completed_per_assign_Z_condition
+  )),type="pearson")
+
+```
+## RQ2 ICCS
+### Assignments started
+```{r}
+assign_mod<-lmer(percent_assignmnet_started ~ (1 | SchIDEnd/Teacher / ClaIDEnd),
+     data = dat)
+assign_var<-as.data.frame( VarCorr(lmer(percent_assignmnet_started ~ (1 | SchIDEnd/Teacher / ClaIDEnd),
+     data = dat) ))
+
+assign_var%>%
+  select(-var1, -var2) %>%
+  mutate(
+    ICC = round(vcov/sum(vcov), 3)
+  )
+
+```
+
+```{r}
+### Total Assignmnets Started
+
+dat %>%
+  dplyr::group_by(Teacher) %>%
+  dplyr::mutate(n = length(StuID)) %>%
+  filter(n > 20) %>%
+  ggplot(aes(y = total_assignmnet_started, x = as.factor(Teacher)) ) +
+  geom_jitter(alpha = .3, aes( color = condition_assignment)) +
+      geom_boxplot(  outlier.shape = NA, alpha = .3) +
+        theme_bw() +
+  labs(
+    color = "Condition"
+  ) + theme(
+  axis.text.x = element_blank(),
+  axis.ticks = element_blank()) +
+  scale_x_discrete(name ="Teachers")+
+  scale_y_continuous(name = "Assignments Started", breaks=c(seq(0:9))) 
+
+```
+
+### Problems Attempted
+```{r}
+
+problem_mod<-lmer(problems_attempted_Z_condition ~ (1 | SchIDEnd/Teacher / ClaIDEnd),
+     data = dat)
+problem_var<-as.data.frame( VarCorr(lmer(problems_attempted_Z_condition ~ (1 | SchIDEnd/Teacher / ClaIDEnd),
+     data = dat) ))
+
+problem_var %>%
+  select(-var1, -var2) %>%
+  mutate(
+    ICC = round(vcov/sum(vcov), 3)
+  )
+```
+### Figure 
+```{r}
+dat$School <- ifelse(is.na(dat$SchIDEnd), dat$SchIDPre, dat$SchIDEnd)
+
+
+dat$School <- ifelse(is.na(dat$SchIDEnd), dat$SchIDPre, dat$SchIDEnd)
+table(dat$School)
+dat$School = ifelse(dat$School== 11,10, dat$School)
+
+
+# total Problems Completed
+ 
+dat %>%
+  dplyr::group_by(Teacher) %>%
+  dplyr::mutate(n = length(StuID)) %>%
+  filter(n > 20) %>%
+  ggplot(aes(y = problems_attempted_Z_condition, x = as.factor(Teacher)) ) +
+  geom_jitter(alpha = .3, aes( color = condition_assignment)) +
+      geom_boxplot(  outlier.shape = NA, alpha = .3) +
+  theme_classic() +
+  labs(
+    color = "Condition"
+  ) + theme(
+  axis.text.x = element_blank(),
+  axis.ticks = element_blank()) +
+  scale_x_discrete(name ="Teachers")+
+  scale_y_continuous(name = "Total Problems (Z-Score)") +
+  facet_grid(. ~ School, scale="free", space="free_x") +
+  ggtitle("School") +
+  theme(plot.title = element_text(hjust = 0.5, size = 10))
+
+
+```
+### Porblems Per assignment
+```{r}
+prob_per_session_mod<-lmer(avg_problems_completed_per_assign_Z_condition ~ (1 | SchIDEnd/Teacher / ClaIDEnd),
+     data = dat) 
+prob_per_session_var<-as.data.frame( VarCorr(lmer(avg_problems_completed_per_assign_Z_condition ~ (1 | SchIDEnd/Teacher / ClaIDEnd),
+     data = dat) ))
+
+prob_per_session_var%>%
+  select(-var1, -var2) %>%
+  mutate(
+    ICC = round(vcov/sum(vcov), 3)
+  )
+
+```
+```{r}
+# avg_problems_completed_per_assign
+dat %>%
+  dplyr::group_by(Teacher) %>%
+  dplyr::mutate(n = length(StuID)) %>%
+  filter(n > 20) %>%
+  ggplot(aes(y = avg_problems_completed_per_assign_Z_condition, x = as.factor(Teacher)) ) +
+  geom_jitter(alpha = .3, aes( color = condition_assignment)) +
+      geom_boxplot(  outlier.shape = NA, alpha = .3) +
+        theme_classic() +
+  labs(
+    color = "Condition"
+  ) + theme(
+  axis.text.x = element_blank(),
+  axis.ticks = element_blank()) +
+  scale_x_discrete(name ="Teachers")+
+  scale_y_continuous(name = "Problems per Assignment (Z-Score)") +
+  facet_grid(. ~ School, scale="free", space="free_x") +
+  ggtitle("Schools") +
+  theme(plot.title = element_text(hjust = 0.5, size = 10))
+
+
+```
+
+## RQ3 (w/ SD)
+### aggrigated dtata
+```{r}
+
+length(unique(dat$TeaIDPre))
+length(unique(dat$TeaIDEnd))
+
+dat_teacher<-dat %>%
+  dplyr::select(TeaIDEnd,
+         StuID,
+         total_assignmnet_started ,
+         problems_attempted_Z_condition ,
+         avg_problems_completed_per_assign_Z_condition,
+         in_program_time_mins_z) %>%
+  mutate(total_assignmnet_started = ifnull(total_assignmnet_started, 0),
+         problems_attempted_Z_condition = ifnull(problems_attempted_Z_condition, 0),
+         avg_problems_completed_per_assign_Z_condition = ifnull(avg_problems_completed_per_assign_Z_condition, 0),
+         in_program_time_mins_z = ifnull(in_program_time_mins_z, 0))%>%
+  dplyr::group_by(
+    TeaIDEnd 
+  ) %>%
+  dplyr::summarise(
+    n = length(StuID),
+    assignmnet_started_mean = mean(((total_assignmnet_started/9)*100), na.rm = T),
+    assignmnet_started_sd =  sd(((total_assignmnet_started/9)*100), na.rm = T),
+     problems_attempted_Z_condition_mean = mean((problems_attempted_Z_condition), na.rm = T),
+     problems_attempted_Z_condition_sd = sd((problems_attempted_Z_condition), na.rm = T),
+    problems_completed_per_assign_Z_condition_mean = mean((avg_problems_completed_per_assign_Z_condition), na.rm = T),
+    problems_completed_per_assign_Z_condition_sd = sd((avg_problems_completed_per_assign_Z_condition), na.rm = T)
+  ) %>%
+  na.omit()
+
+
+```
+
+###  Figure X: number of clsuteres
+```{r}
+# find best model fit
+lpa_teacherBIC <- mclustBIC(
+  dat_teacher %>% 
+    dplyr::select(-TeaIDEnd, -n) %>%  
+    na.omit(),
+  prior = priorControl(functionName = "defaultPrior")
+)
+
+BIC<- melt(lpa_teacherBIC[1:9,]) %>%
+  rename(
+    'Number of Clusters' =Var1,
+    'Model' = Var2,
+    'BIC' = value
+    
+  )
+
+ggplot(BIC, aes(x = `Number of Clusters`, y = BIC, color = Model)) +
+  geom_path(alpha = .7) +
+  geom_point(alpha = .7) +
+  scale_x_continuous(breaks = 1:9) +
+  theme_classic() +
+  labs( y = "BIC")
+
+
+```
+
+### Run LPA
+```{r}
+# run cluster analysis 
+lpa_teacher <- Mclust(dat_teacher %>% 
+                        dplyr::select(-TeaIDEnd, -n),
+                        modelNames = 'EEV',
+                      G = 2)
+
+dat_teacher <- cbind(
+  dat_teacher,
+  lpa_teacher$classification,
+  lpa_teacher$uncertainty) %>%
+  dplyr::rename(
+    class = `lpa_teacher$classification`,
+    uncertainty = `lpa_teacher$uncertainty`
+  )
+
+table(dat_teacher$class)
+
+cprob <- cbind(lpa_teacher$z, lpa_teacher$classification) 
+cprob <- as.data.frame(cprob) 
+colnames(cprob) <- c("prob (class 1)", "prob (class 2)", "class") 
+round(aggregate(cprob[, 1:2], list(cprob$class), mean), 1000)
+
+
+
+# In the results reported above, the NA values mean that a particular model cannot be estimated. This happens in practice due to singularity in the covariance matrix estimate and can be avoided using the Bayesian regularisation proposed in Fraley and Raftery (2007a) and implemented in mclust as described in Fraley et al. (2012).
+# Fraley C, Raftery AE. Bayesian regularization for normal mixture estimation and model-based clustering. Journal of Classification. 2007a;24(2):155–181. [Google Scholar]
+# Fraley C, Raftery AE. Model-based methods of classification: using the mclust software in chemometrics. Journal of Statistical Software. 2007b;18(6):1–13. [Google Scholar]
+
+```
+
+```{r}
+# plot_ly(
+#   x = dat_teacher$assignmnet_completed_mean,
+#   z = dat_teacher$problems_attempted_Z_condition_mean,
+#   y = dat_teacher$problems_completed_per_assign_Z_condition_mean,
+#   type = "scatter3d",
+#   mode = "markers",
+#   color = as.factor(dat_teacher$class)
+# )
+```
+
+### denisity scatter plots
+```{r}
+
+ggplot(dat_teacher, aes(x= assignmnet_started_mean, y = problems_attempted_Z_condition_mean, color = as.factor(class),  size = n)) +
+  geom_density2d() +
+  geom_point(alpha = .8) +
+  theme_classic()
+
+ggplot(dat_teacher, aes(x= assignmnet_started_mean, y = problems_completed_per_assign_Z_condition_mean, color = as.factor(class), size = n)) +
+  geom_density2d() +
+  geom_point(alpha = .8) +
+  theme_classic()
+
+scatterplot3d(dat_teacher[,3:5], pch = 16,color = dat_teacher$class)
+
+```
+
+
+```{r}
+# install.packages("stringr")          
+# Install stringr package
+# library("stringr") 
+
+dat_teacher_long <-dat_teacher %>%
+  mutate(
+      'Assignments Complete Mean' = scale(assignmnet_started_mean),
+      'Assignments Complete SD' = scale(assignmnet_started_sd),
+      'Total Problems Mean' = scale(problems_attempted_Z_condition_mean),
+      'Total Problems SD' = scale(problems_attempted_Z_condition_sd),
+      'Problems per Assignment Mean' = scale(problems_completed_per_assign_Z_condition_mean),
+      'Problems per Assignment SD' = scale(problems_completed_per_assign_Z_condition_sd)) %>%
+  melt(
+    id.vars = c('TeaIDEnd', 'class', 'n'),
+    measure.vars = c(
+      'Assignments Complete Mean',
+      'Assignments Complete SD',
+      'Total Problems Mean',
+      'Total Problems SD',
+      'Problems per Assignment Mean',
+      'Problems per Assignment SD' )
+    
+  ) %>%
+  mutate(
+    var = ifelse( grepl('Mean', variable), "Mean",
+                  "Standard Deviation"),
+    variable2 = factor(str_remove(str_remove(variable, ' (Mean)'), ' SD'), levels = c("Assignments Complete",
+                                                                                      "Total Problems",
+                                                                                      "Problems per Assignment"
+                                                                                       ))
+                  
+  )
+levels(as.factor(dat_teacher_long$variable2))
+#dat_teacher_long$variable2 = factor(temp$size, levels=c('50%','100%','150%','200%'))
+
+
+ggplot(dat_teacher_long, aes(x = var, y = value)) +
+  geom_jitter(aes(group = as.factor(class), color = as.factor(class), size = n), alpha = .3) +
+  geom_boxplot(aes(fill = as.factor(class)), alpha = .8) +
+  theme_classic() +
+  theme(
+    axis.title.x = element_blank()
+  )+
+  ylab("z-score") +
+  scale_fill_discrete(name = "Fidelity", labels = c("High", "Low")) +
+  scale_color_discrete(guide = 'none') +
+  scale_size(name = "Sudents") +
+  scale_x_discrete(
+    labels = function(x)
+      str_wrap(x, width = 10)
+  ) + 
+  facet_grid(. ~ variable2) 
+```
+
+### Descriptive table 
+```{r}
+
+dat_teacher_long <-dat_teacher %>%
+  mutate(
+      'Assignments Complete Mean' = (assignmnet_started_mean),
+      'Assignments Complete SD' = (assignmnet_started_sd),
+      'Total Problems Mean' = (problems_attempted_Z_condition_mean),
+      'Total Problems SD' = (problems_attempted_Z_condition_sd),
+      'Problems per Assignment Mean' = (problems_completed_per_assign_Z_condition_mean),
+      'Problems per Assignment SD' = (problems_completed_per_assign_Z_condition_sd)) %>%
+  melt(
+    id.vars = c('TeaIDEnd', 'class', 'n'),
+    measure.vars = c(
+      'Assignments Complete Mean',
+      'Assignments Complete SD',
+      'Total Problems Mean',
+      'Total Problems SD',
+      'Problems per Assignment Mean',
+      'Problems per Assignment SD' )
+    
+  ) %>%
+  mutate(
+    var = ifelse( grepl('Mean', variable), "Mean",
+                  "Standard Deviation"),
+    variable2 = factor(str_remove(str_remove(variable, ' (Mean)'), ' SD'), levels = c("Assignments Complete",
+                                                                                      "Total Problems",
+                                                                                      "Problems per Assignment"
+                                                                                       ))
+                  
+  )
+
+cluster_des<-dat_teacher_long %>%
+  dplyr::group_by(class, variable2, var) %>%
+  dplyr::summarise(
+    mean = round(mean(value), 2),
+    SD = round(sd(value), 2)) %>% 
+  arrange(variable2, var)
+cluster_des
+```
+
+
+```{r}
+dat_teacher_long %>%
+  group_by(variable ) %>%
+  dplyr::summarise(
+    f = round((summary(aov(value ~ class)))[[1]][1,4], 2),
+    p = round((summary(aov(value ~ class)))[[1]][1,5], 3)
+    )
+  
+
+```
+
+
+
+
+
